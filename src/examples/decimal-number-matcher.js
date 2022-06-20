@@ -1,8 +1,12 @@
 // noinspection JSUnusedGlobalSymbols
 const { Matcher } = require("uu_appg01_server").Validation;
 const { ValidationResult } = require("uu_appg01_server").Validation;
-const { Validator } = require("uu_appg01_server").Validation;
 const Decimal = require("decimal.js");
+const DecimalNumberMatcherError = require("./decimal-number-matcher-error");
+
+const DEFAULT_MAX_DIGIT_COUNT = 11;
+const MAX_DIGITAL_COUNT_INDEX = 0;
+const MAX_DECIMAL_PLACE_COUNT_INDEX = 1;
 
 /**
  * Matcher validates that string value represents a decimal number or null.
@@ -24,81 +28,54 @@ class DecimalNumberMatcher extends Matcher {
   }
 
   processParams(...params) {
-    this.params = params;
+    this.maxDigitCount = params?.[MAX_DIGITAL_COUNT_INDEX] ?? DEFAULT_MAX_DIGIT_COUNT;
+    this.maxDecimalPlaceCount = params?.[MAX_DECIMAL_PLACE_COUNT_INDEX];
   }
 
-  match(value, ctx, ...args) {
-    let result = new ValidationResult();
+  match(value) {
+    const validationResult = new ValidationResult();
 
-    if (value != null) {
-      if (this.params.length === 0) {
-        let number;
-        try {
-          number = new Decimal(value);
-        } catch (e) {
-          number = null;
-          result.addInvalidTypeError(
-            "doubleNumber.e001",
-            "The value is not a valid decimal number."
-          );
-        }
-        if (number) {
-          if (number.precision(true) > 11) {
-            result.addInvalidTypeError(
-              "doubleNumber.e002",
-              "The value exceeded maximum number of digits."
-            );
-          }
-        }
-      } else if (this.params.length === 1) {
-        let number;
-        try {
-          number = new Decimal(value);
-        } catch (e) {
-          number = null;
-          result.addInvalidTypeError(
-            "doubleNumber.e001",
-            "The value is not a valid decimal number."
-          );
-        }
-        if (number) {
-          if (number.precision(true) > this.params[0]) {
-            result.addInvalidTypeError(
-              "doubleNumber.e002",
-              "The value exceeded maximum number of digits."
-            );
-          }
-        }
-      } else if (this.params.length === 2) {
-        let number;
-        try {
-          number = new Decimal(value);
-        } catch (e) {
-          number = null;
-          result.addInvalidTypeError(
-            "doubleNumber.e001",
-            "The value is not a valid decimal number."
-          );
-        }
-        if (number) {
-          if (number.precision(true) > this.params[0]) {
-            result.addInvalidTypeError(
-              "doubleNumber.e002",
-              "The value exceeded maximum number of digits."
-            );
-          }
-          if (number.decimalPlaces() > this.params[1]) {
-            result.addInvalidTypeError(
-              "doubleNumber.e003",
-              "The value exceeded maximum number of decimal places."
-            );
-          }
-        }
-      }
+    if (value == null) {
+      return validationResult;
     }
 
-    return result;
+    const decimal = tryToParseDecimal(value, validationResult);
+    if (decimal) {
+      this._validateDecimal(decimal, validationResult);
+    }
+    return validationResult;
   }
+
+  _validateDecimal(number, result) {
+    this._checkDigitCount(number, result);
+    if (this.maxDecimalPlaceCount) {
+      this._checkDecimalPlaceCount(number, result);
+    }
+  }
+
+  _checkDigitCount(number, validationResult) {
+    if (number.precision(true) > this.maxDigitCount) {
+      addInvalidTypeError(DecimalNumberMatcherError.ExceededMaxDigits, validationResult);
+    }
+  }
+
+  _checkDecimalPlaceCount(number, validationResult) {
+    if (number.decimalPlaces() > this.maxDecimalPlaceCount) {
+      addInvalidTypeError(DecimalNumberMatcherError.ExceededMaxPlaces, validationResult);
+    }
+  }
+}
+
+function tryToParseDecimal(value, validationResult) {
+  try {
+    return new Decimal(value);
+  } catch (e) {
+    addInvalidTypeError(DecimalNumberMatcherError.NotValid, validationResult);
+  }
+}
+
+function addInvalidTypeError(error, validationResult) {
+  validationResult.addInvalidTypeError(error.code, error.message);
 }
 
 module.exports = DecimalNumberMatcher;
